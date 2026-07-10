@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-core-poem-example"
+version = "0.1.0"
+description = "Tiny agent-core example with one workspace-scoped file tool."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "agent-core @ git+https://github.com/maxDcb/agent-core.git@main",
+    "pydantic>=2,<3",
+]
+
+[project.scripts]
+poem-agent = "poem_agent.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["poem_agent*"]
