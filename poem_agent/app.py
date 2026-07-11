@@ -5,7 +5,9 @@ from pathlib import Path
 
 from agent_core import (
     CoreSettings,
+    ExecutionContext,
     PolicyEngine,
+    RunContext,
     StructuredOutputContract,
     StructuredTaskRunner,
     StructuredTaskSpec,
@@ -41,7 +43,7 @@ def build_settings() -> CoreSettings:
         azure_anthropic_api_key=os.getenv("AZURE_ANTHROPIC_API_KEY"),
         azure_anthropic_api_version=os.getenv("AZURE_ANTHROPIC_API_VERSION"),
         azure_anthropic_version=os.getenv("AZURE_ANTHROPIC_VERSION"),
-        model=os.getenv("AGENT_MODEL", "gpt-4.1-mini"),
+        model=os.getenv("AGENT_CORE_MODEL") or os.getenv("AGENT_MODEL", "gpt-4.1-mini"),
         temperature=float(os.getenv("AGENT_TEMPERATURE", "0.7")),
         session_file=PROJECT_ROOT / "sessions" / "session.json",
         allowed_read_roots=[WORKSPACE],
@@ -97,7 +99,13 @@ def build_spec(user_input: str, *, json_mode: bool) -> StructuredTaskSpec:
 
 def run_poem(user_input: str, *, json_mode: bool = False) -> str:
     runner = build_runner()
-    result = runner.run(spec=build_spec(user_input, json_mode=json_mode))
+    run_context = RunContext(
+        namespace_id="poem-agent",
+        run_id="write-workspace-poem",
+        thread_id="poem-agent",
+    )
+    context = ExecutionContext.from_run_context(context=run_context, settings=runner.settings)
+    result = runner.run(spec=build_spec(user_input, json_mode=json_mode), context=context)
 
     if not result.ok:
         raise RuntimeError(result.failure_reason or result.raw_content or "agent-core run failed")
