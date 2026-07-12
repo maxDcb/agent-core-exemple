@@ -1,20 +1,21 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
+from uuid import uuid4
 
 from agent_core import (
+    AgentRunResult,
+    AgentRunService,
     CoreSettings,
-    ExecutionContext,
-    PolicyEngine,
+    JsonFileRunStore,
     RunContext,
+    RunStore,
     StructuredOutputContract,
-    StructuredTaskRunner,
     StructuredTaskSpec,
-    ToolRegistry,
 )
-from agent_core.llm.errors import LLMProviderError
-from agent_core.llm.provider_factory import build_provider
+from agent_core.spi import BaseLLMProvider, LLMProviderError, PolicyEngine, ToolRegistry, build_provider
 from pydantic import BaseModel, ConfigDict, Field
 
 from poem_agent.tools import ReadWorkspaceFileTool, validate_workspace_read
@@ -54,17 +55,23 @@ def build_settings() -> CoreSettings:
     )
 
 
-def build_runner() -> StructuredTaskRunner:
-    settings = build_settings()
+def build_run_service(
+    *,
+    settings: CoreSettings | None = None,
+    provider: BaseLLMProvider | None = None,
+    run_store: RunStore | None = None,
+) -> AgentRunService:
+    settings = settings or build_settings()
     registry = ToolRegistry()
     registry.register(ReadWorkspaceFileTool())
 
     policy = PolicyEngine(validators={"read_workspace_file": validate_workspace_read})
-    return StructuredTaskRunner(
+    return AgentRunService(
         settings=settings,
-        provider=build_provider(settings),
+        provider=provider or build_provider(settings),
         tool_registry=registry,
         policy_engine=policy,
+        run_store=run_store or JsonFileRunStore(PROJECT_ROOT / "sessions" / "agent-runs"),
     )
 
 
@@ -97,16 +104,27 @@ def build_spec(user_input: str, *, json_mode: bool) -> StructuredTaskSpec:
     )
 
 
-def run_poem(user_input: str, *, json_mode: bool = False) -> str:
-    runner = build_runner()
-    run_context = RunContext(
-        namespace_id="poem-agent",
-        run_id="write-workspace-poem",
-        thread_id="poem-agent",
+def execute_poem(
+    user_input: str,
+    *,
+    json_mode: bool = False,
+    service: AgentRunService | None = None,
+    run_id: str | None = None,
+) -> AgentRunResult:
+    service = service or build_run_service()
+    resolved_run_id = run_id or f"poem-{uuid4().hex}"
+    return service.execute(
+        spec=build_spec(user_input, json_mode=json_mode),
+        context=RunContext(
+            namespace_id="poem-agent",
+            run_id=resolved_run_id,
+            application_context={"workspace": str(WORKSPACE)},
+        ),
+        run_id=resolved_run_id,
     )
-    context = ExecutionContext.from_run_context(context=run_context, settings=runner.settings)
-    result = runner.run(spec=build_spec(user_input, json_mode=json_mode), context=context)
 
+
+def render_poem(result: AgentRunResult, *, json_mode: bool) -> str:
     if not result.ok:
         raise RuntimeError(result.failure_reason or result.raw_content or "agent-core run failed")
 
@@ -117,9 +135,17 @@ def run_poem(user_input: str, *, json_mode: bool = False) -> str:
     return poem.model_dump_json(indent=2)
 
 
-def run_cli(user_input: str, *, json_mode: bool) -> int:
+def run_poem(user_input: str, *, json_mode: bool = False) -> str:
+    result = execute_poem(user_input, json_mode=json_mode)
+    return render_poem(result, json_mode=json_mode)
+
+
+def run_cli(user_input: str, *, json_mode: bool, show_usage: bool = False) -> int:
     try:
-        print(run_poem(user_input, json_mode=json_mode))
+        result = execute_poem(user_input, json_mode=json_mode)
+        print(render_poem(result, json_mode=json_mode))
+        if show_usage:
+            print(json.dumps(result.to_dict()["usage"], indent=2))
     except LLMProviderError as exc:
         print(exc.user_message)
         return 2

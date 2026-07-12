@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent_core import ExecutionContext, ToolResult, build_tool_definition
-from agent_core.types import AuthorizationResult
+from agent_core import ExecutionContext
+from agent_core.spi import AuthorizationResult, ToolResult, build_tool_definition
 
 
 class ReadWorkspaceFileTool:
