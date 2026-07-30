@@ -15,11 +15,16 @@ from agent_core import (
     StructuredOutputContract,
     StructuredTaskSpec,
 )
-from agent_core.spi import BaseLLMProvider, LLMProviderError, PolicyEngine, ToolRegistry, build_provider
+from agent_core.spi import (
+    BaseLLMProvider,
+    LLMProviderError,
+    PolicyEngine,
+    ToolRegistry,
+    build_provider,
+)
 from pydantic import BaseModel, ConfigDict, Field
 
 from poem_agent.tools import ReadWorkspaceFileTool, validate_workspace_read
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = PROJECT_ROOT / "workspace"
@@ -46,7 +51,7 @@ def build_settings() -> CoreSettings:
         azure_anthropic_version=os.getenv("AZURE_ANTHROPIC_VERSION"),
         model=os.getenv("AGENT_CORE_MODEL") or os.getenv("AGENT_MODEL", "gpt-4.1-mini"),
         temperature=float(os.getenv("AGENT_TEMPERATURE", "0.7")),
-        session_file=PROJECT_ROOT / "sessions" / "session.json",
+        artifacts_directory=PROJECT_ROOT / "artifacts",
         allowed_read_roots=[WORKSPACE],
         base_system_prompt=(
             "You are a small poetry agent. Use tools only when useful. "
@@ -149,7 +154,7 @@ def run_cli(user_input: str, *, json_mode: bool, show_usage: bool = False) -> in
     except LLMProviderError as exc:
         print(exc.user_message)
         return 2
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         print(f"Error: {exc}")
         return 1
     return 0
